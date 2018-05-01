@@ -1,0 +1,188 @@
+from flask import Flask
+from flask import request
+import sqlite3
+import sys
+import Adafruit_DHT
+import RPi.GPIO as GPIO
+import time
+import json
+import uuid
+import threading
+import httplib
+import urllib
+import urllib2
+from pusher import Pusher
+
+conn = sqlite3.connect('tempReaderDB.db')
+app = Flask(__name__)
+
+
+@app.route("/clearDB")
+def clearDB():
+        print("clearb db webserver called")
+        conn = sqlite3.connect("tempReaderDB.db")
+        cur = conn.cursor()
+        cur.execute('DELETE FROM templimit')
+        conn.commit()
+        conn.close()
+        return "GOOD"
+
+@app.route("/setNotifyTemperature")
+def webServiceSetNotifyTemp():
+        print("webservice set notify temp made")
+        keyID = request.args.get('kId')
+        highTemp = request.args.get('highTemp')
+        lowTemp = request.args.get('lowTemp')
+        setTempLimit(keyID, highTemp, lowTemp)
+        return "GOOD"
+@app.route("/readTemperature")
+ef webServiceReadTemp():
+        print("webservice call made")
+        id = uuid.uuid4()
+        idString = str(id)
+        lastTimeDateSent = request.args.get('lastTimeDate')
+        temperature = measureTemp()
+        temperatureString = str(temperature)
+        timeDate = getCurrentTimeDate()
+        timeDateString = str(timeDate)
+        conn = sqlite3.connect('tempReaderDB.db')
+        cur = conn.cursor()
+        cur.execute('INSERT INTO tempDB (id,temperature, time) VALUES (?,?,?)',(idString, temperatureString, timeDateString))
+        conn.commit()
+        conn.close()
+        sendData = getTempLogDB(lastTimeDateSent)
+        json_data = json.dumps(sendData)
+        return json_data
+
+def measureTemp():
+        humidity, temperature = Adafruit_DHT.read_retry(11,4)
+        fahrenheit = (temperature * 1.8) + 32
+        return fahrenheit
+
+def getCurrentTimeDate():
+        currentTimeDate = time.time()
+        return currentTimeDate
+
+def getTempLogDB(timeStamp):
+        tempArray = []
+        conn = sqlite3.connect("tempReaderDB.db")
+        cur = conn.cursor()
+        cur.execute('SELECT * FROM tempDB WHERE time > (?)', (timeStamp,))
+        rows = cur.fetchall()
+        for row in rows:
+                newDictionary = {}
+                temp = row[1]
+                time = row[2]
+                newDictionary["time"] = time
+                newDictionary["temperature"] = temp
+                tempArray.append(newDictionary)
+        conn.close()
+        return tempArray
+
+def getTempLimit():
+        tempArray = []
+        conn = sqlite3.connect("tempReaderDB.db")
+        cur = conn.cursor()
+        cur.execute('SELECT * FROM tempLimit')
+        rows = cur.fetchall()
+        for row in rows:
+                newDictionary = {}
+                id = row[0]
+                lowTemp = row[1]
+                highTemp = row[2]
+                newDictionary["id"] = id
+                newDictionary["lowTemp"] = lowTemp
+                newDictionary["highTemp"] = highTemp
+                tempArray.append(newDictionary)
+        conn.close()
+        return tempArray
+
+def setTempLimit(keyID, highlimit, lowLimit):
+        conn = sqlite3.connect("tempReaderDB.db")
+        cur = conn.cursor()
+        cur.execute('SELECT * FROM tempLimit where id = (?)', (keyID,))
+        rows1 = cur.fetchall()
+        if rows1 == []:
+                conn =  sqlite3.connect("tempReaderDB.db")
+                cur = conn.cursor()
+                cur.execute('INSERT INTO templimit (id, lowLimit, highLIMIT) VALUES (?,?,?)', (ke$
+                conn.commit()
+                conn.close()
+        else:
+
+                conn =  sqlite3.connect("tempReaderDB.db")
+                cur = conn.cursor()
+                cur.execute('UPDATE  templimit set lowLimit = (?), highLIMIT = (?) where id = (?)$
+                conn.commit()
+                conn.close()
+
+def sendPushNotification(keyID, message):
+        print("Send push about to begin")
+        temp_list = []
+        temp_list.append(keyID)
+        pusher = Pusher(app_id=u'454529', key=u'325f37e004ea9f71daa4', secret=u'f1dd90a1244427c53$
+        pusher.notify(temp_list, {
+         'apns': {
+                 'aps': {
+                         'alert': {
+                                 'body': message
+                                 },
+                        'sound': 'default'
+                         }
+                 }
+        })
+        print("send push finished")
+
+def monitorTemperature():
+        print("monitor temp called")
+        id = uuid.uuid4()
+        stringID = str(id)
+        temperature = measureTemp()
+        tempLimitArray = getTempLimit()
+        for tempLimit in tempLimitArray:
+                keyID = tempLimit["id"]
+                keyIDSTR = str(keyID)
+                highTempLimit = tempLimit["highTemp"]
+                lowTempLimit = tempLimit["lowTemp"]
+                highTempLimitInt = int(highTempLimit)
+                lowTempLimitInt = int(lowTempLimit)
+                print("The high temp limit was: " + highTempLimit)
+                if highTempLimitInt < temperature:
+                        print("sending high temp push")
+                        temperatureString = str(temperature)
+                        temperatureString2 = 'Its too hot in Bradens room. Currently : ' + temper$
+                        sendNotification = threading.Thread(target = sendPushNotification(keyIDST$
+                        sendNotification.start()
+                        print("just passed high temp push thread")
+				if temperature < lowTempLimitInt:
+                        print("sending low temp push")
+                        temperatureString = str(temperature)
+                        temperatureString2 = 'Its too cold in Bradens room. Currently : ' + tempe$
+                        sendNotification = threading.Thread(target = sendPushNotification(keyIDST$
+                        sendNotification.start()
+        print("finished with iterating through the tempLimitArray")
+        temperatureString = str(temperature)
+        timeDate = getCurrentTimeDate()
+        timeDateString = str(timeDate)
+        print("measurement taken at : " + timeDateString)
+        print("temperature: " + temperatureString)
+        conn = sqlite3.connect("tempReaderDB.db")
+        cur = conn.cursor()
+        cur.execute('INSERT INTO tempDB (id, temperature, time) VALUES (?,?,?)', (stringID, tempe$
+        conn.commit()
+        conn.close()
+
+def runApp():
+        while True:
+                print("run app while try statement started")
+                runTempMonitor = threading.Thread(target = monitorTemperature)
+                runTempMonitor.start()
+                print("sleep statement about to be called")
+                time.sleep(900)
+                print("sleep statement finished")
+
+
+if __name__ == "__main__":
+        startApp = threading.Thread(target = runApp)
+        startApp.start()
+        app.run(host='0.0.0.0', port=80, debug=False)
