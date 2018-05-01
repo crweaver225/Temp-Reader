@@ -1,0 +1,8 @@
+
+platform :ios, '10.0'
+# Uncomment this line if you're using Swift
+use_frameworks!
+
+target 'Temp Reader' do
+pod 'PusherSwift'
+end
