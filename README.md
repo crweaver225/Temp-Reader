@@ -1,5 +1,5 @@
 # Temp-Reader
-Raspberry Pi code to read and log temperatures, Send Push notifications if temps are too high or low, and handle webservice calls.
+An entire Raspberry Pi & iOS project to read and log temperatures, Send Push notifications if temps are too high or low, and handle webservice calls.
 
 
 
